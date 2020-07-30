@@ -8,8 +8,8 @@ setup(
   description = 'Library to retrieve an access token to Centrify PAS from an enrolled machine',
   author = 'Harvey Kwok',
   author_email = 'harvey.kwok@centrify.com',
-  url = 'https://github.com/centrify/dmc/python',
-  download_url = 'https://github.com/centrify/dmc/python/archive/v_01.tar.gz',
+  url = 'https://github.com/centrify/dmc-python',
+  download_url = 'https://github.com/centrify/dmc-python/archive/v_01.tar.gz',
   keywords = ['Centrify', 'DMC'],
   install_requires=[
       ],
