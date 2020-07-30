@@ -1,7 +1,17 @@
+import sys
 import os
 import random
 import time
-import socket
+import logging
+
+if sys.platform.startswith("win"):
+    import win32file
+    import win32pipe
+    import pywintypes
+elif sys.platform.startswith("linux"):
+    import socket
+
+logger = logging.getLogger(__name__)
 
 LRPC2_BYTEORDER = "little"
 LRPC2_MAGIC_NUMBER = int(0xABCD8012).to_bytes(4, byteorder=LRPC2_BYTEORDER)
@@ -12,52 +22,59 @@ LRPC2_VERSION_4 = int(4).to_bytes(4, byteorder=LRPC2_BYTEORDER)
 ANSWER_ACK = 1
 ANSWER_NACK = 0
 
-# status mesages
-MSG_ID_PING = 100
-
-# log mesages
-MSG_ID_CONTROLLOG2 = 107
-
-# control mesages
-MSG_ID_CONTROLFLUSHCACHE  = 101
-MSG_ID_RELOADCCLIENTPROPS = 104
-MSG_ID_ROTATELOG          = 115
-MSG_ID_PING_TCPRELAY      = 116
-MSG_ID_SET_LOGLEVEL       = 117
-MSG_ID_VALIDATE_AGENT     = 118
-
-# AAPM
-MSG_ID_CHECKOUTPWD   = 1400
-MSG_ID_SETACCOUNT    = 1401
-MSG_ID_DELETEACCOUNT = 1402
-MSG_ID_ROTATEPWD     = 1403
 MSG_ID_ADMIN_CLIENT_GETTOKEN = int(1500).to_bytes(2, byteorder=LRPC2_BYTEORDER)
-
-# DA NextGen support
-MSG_ID_DAI_GETAUDITLEVEL     = 1101
-MSG_ID_DA_GETCERTIFICATE     = 1103
-MSG_ID_DA_GETDACONFIGURATION = 1104
-MSG_ID_DA_GETUPNFORUSER      = 1105
-MSG_ID_DAI_SETAUDITTRAILEVENT   = 1200
-MSG_ID_DAI_SETAUDITTRAILEVENTV2 = 1212
 
 # Message data types
 MSG_END = bytes([0])
 MSG_DATA_TYPE_BOOL = bytes([1])
 MSG_DATA_TYPE_INT32 = bytes([2])
-MSG_DATA_TYPE_UINT32 = bytes([3])
 MSG_DATA_TYPE_STRING = bytes([4])
-MSG_DATA_TYPE_PASSWORD = bytes([5])
-MSG_DATA_TYPE_BLOB = bytes([6])
 MSG_DATA_TYPE_STRING_SET = bytes([7])
 
-class lrpc2:
+
+class Ipc:
+    def __init__(self):
+        if sys.platform.startswith("win"):
+            self.handle = win32file.CreateFile(
+                r'\\.\pipe\cagent_admins',
+                win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+                0,
+                None,
+                win32file.OPEN_EXISTING,
+                win32file.FILE_ATTRIBUTE_NORMAL,
+                None
+            )
+        elif sys.platform.startswith("linux"):
+            #pylint: disable=no-member
+            self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.s.connect("/var/centrify/cloud/daemon2")
+
+    def __del__(self):
+        if sys.platform.startswith("win"):
+            win32file.CloseHandle(self.handle)
+        elif sys.platform.startswith("linux"):
+            self.s.close()
+
+    def send(self, data):
+        if sys.platform.startswith("win"):
+            win32file.WriteFile(self.handle, data)
+            self.handle
+        elif sys.platform.startswith("linux"):
+            self.s.send(data)
+
+    def recv(self, len):
+        if sys.platform.startswith("win"):
+            _,data = win32file.ReadFile(self.handle, len)
+            return data
+        elif sys.platform.startswith("linux"):
+            return self.s.recv(len)
+
+class Lrpc2:
 
     def connect(self):
+        self.s = Ipc()
+        logger.info("Connected to Centrify Client")
         self.pid = os.getpid()
-
-        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.s.connect("/var/centrify/cloud/daemon2")
 
         # Do handshake
         self.s.send(LRPC2_VERSION_4)
@@ -65,6 +82,7 @@ class lrpc2:
         answer = int.from_bytes(data, byteorder=LRPC2_BYTEORDER)
         data = self.s.recv(4)
         self.max_payload_length = int.from_bytes(data, byteorder=LRPC2_BYTEORDER)
+        logger.info("LRPC handshake is completed")
 
         if answer != ANSWER_ACK:
             raise Exception("Server doesn't support LRPC2 version 4")
@@ -87,6 +105,7 @@ class lrpc2:
         # payload length
         length = len(payload)
         if length > self.max_payload_length:
+            logger.error("LRPC payload length %d exceeds the max limit %d", length, self.max_payload_length)
             raise Exception("LRPC2 payload exceed max limit")
         data += length.to_bytes(4, byteorder=LRPC2_BYTEORDER)
 
@@ -97,6 +116,7 @@ class lrpc2:
         self.s.send(bytes(data))
 
         # read response
+        logger.info("Parsing LRPC response...")
         while True:
             header = self.s.recv(34)
 
@@ -156,18 +176,19 @@ class lrpc2:
                 elif item_type == MSG_END:
                     break
                 else:
-                    print(payload)
-                    print("Item type: ", item_type)
+                    logger.error(payload)
+                    logger.error("Item type: %s", item_type)
                     raise Exception("Unrecognized data type")
 
+            logger.info("LRPC response parsing is completed")
             return items
 
 def gettoken(scope):
     try:
-        client = lrpc2()
+        client = Lrpc2()
         client.connect()
     except:
-        raise Exception("Failed to connect to Centrify Client")
+        raise Exception("Failed to connect to Centrify Client.  Please check\n- Cenrify Client is installed on the machine\n- Machine is enrolled to Centrify PAS\n- DMC feature is turned on\n- Run this python script with administrative privilege")
 
     payload = bytearray()
     payload += MSG_ID_ADMIN_CLIENT_GETTOKEN
@@ -176,8 +197,11 @@ def gettoken(scope):
     payload += scope.encode("UTF8")
     payload += MSG_END
     reply = client.request(payload)
-    print(reply)
     if reply[0]>0:
-        raise Exception("Token request rejected by Centrify Client", reply)
+        logger.error("OAuth token request rejected")
+        logger.error(reply)
+        raise Exception("OAuth token request rejected by Centrify Client", reply)
+
+    logger.info("OAuth token with scope '%s' is acquired successfully", scope)
     return reply[2]
 
