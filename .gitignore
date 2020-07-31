@@ -1,2 +1,5 @@
 .venv/
+dist/
+centrify.dmc.egg-info/
 *.pyc
+MANIFEST

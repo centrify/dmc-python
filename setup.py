@@ -1,16 +1,25 @@
 
 from setuptools import setup
+
+# read the contents of README file as long description
+from os import path
+this_directory = path.abspath(path.dirname(__file__))
+with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
+
 setup(
   name = 'centrify.dmc',
   packages = ['dmc'],
   version = '0.3', 
   license='	apache-2.0',
   description = 'Library to retrieve an access token to Centrify PAS from an enrolled machine',
+  long_description=long_description,
+  long_description_content_type='text/markdown',
   author = 'Harvey Kwok',
   author_email = 'harvey.kwok@centrify.com',
   url = 'https://github.com/centrify/dmc-python',
   download_url = 'https://github.com/centrify/dmc-python/archive/v0.3-alpha.tar.gz',
-  keywords = ['Centrify', 'DMC'],
+  keywords = ['Centrify', 'DMC', 'Windows', 'Linux', 'PAS'],
   install_requires=[],
   classifiers=[
     'Development Status :: 3 - Alpha',      # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
@@ -21,5 +30,8 @@ setup(
     'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
+    'Programming Language :: Python :: 3.7',
+    'Operating System :: Microsoft :: Windows',
+    'Operating System :: POSIX :: Linux'
   ],
 )
