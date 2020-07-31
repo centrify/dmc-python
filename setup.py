@@ -1,5 +1,5 @@
 
-from distutils.core import setup
+from setuptools import setup
 setup(
   name = 'centrify.dmc',         # How you named your package folder (MyLib)
   packages = ['centrify.dmc'],   # Chose the same as "name"
