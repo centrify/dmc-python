@@ -15,11 +15,13 @@ if sys.platform.startswith('win'):
     else:
         pywin32 = 'pywin32'
     install_requires = [pywin32]
+else:
+  install_requires = ""
 
 setuptools.setup(
   name = 'centrify.dmc',
   packages = ['dmc'],
-  version = '0.3', 
+  version = '0.5', # To be safe
   license='	apache-2.0',
   description = 'Library to retrieve an access token to Centrify PAS from an enrolled machine',
   long_description=long_description,
